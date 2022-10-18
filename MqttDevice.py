@@ -1,6 +1,6 @@
 from riaps.run.comp import Component
 
-import interface.MQTT
+from interfaces.MQTT import MQThread
 
 
 class MqttDevice(Component):
@@ -12,7 +12,7 @@ class MqttDevice(Component):
 
     def on_data(self):
         if self.thread is None:  # First clock pulse
-            self.thread = interface.MQTT.MQThread(self.trigger, self.logger, self.mqtt_config)  # Inside port
+            self.thread = MQThread(self.trigger, self.logger, self.mqtt_config)  # Inside port
             self.thread.start()  # Start
             self.trigger.set_identity(self.thread.get_identity(self.trigger))
             self.trigger.activate()
