@@ -1,3 +1,4 @@
+import abc
 from riaps.run.comp import Component
 
 from interfaces.MQTT import MQThread
@@ -28,8 +29,8 @@ class MqttDevice(Component):
             self.thread.join()
         self.logger.info("__destroy__ed")
 
-    def on_trigger(self):  # Internally triggered operation (
-        msg = self.trigger.recv_pyobj()  # Receive message from internal thread
-        self.logger.info('on_trigger():%r' % msg)
-        self.ampl.send_pyobj(msg)  # Send it to the echo server
+    @abc.abstractmethod
+    def on_trigger(self):  # Internally triggered operation
+        pass
+
 
