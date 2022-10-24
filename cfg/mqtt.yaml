@@ -6,3 +6,4 @@ broker_connect_config:
 msg_spec:
   type: float
   topic: riaps/cmd
+  # TODO: handle multiple topics with filter
