@@ -123,6 +123,8 @@ class MQThread(threading.Thread):
             self.client.loop_read()
             self.client.loop_write()
             self.client.loop_misc()
+            if self.broker is None:
+                time.sleep(1)
 
         self.broker_fileno = self.broker.fileno()
         self.poller.register(self.broker, zmq.POLLIN)  # broker socket
