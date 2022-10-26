@@ -32,6 +32,7 @@ class MQThread(threading.Thread):
                 with open(config, 'r') as cfg_file:
                     cfg = yaml.safe_load(cfg_file)
                     self.broker_connect_config = cfg["broker_connect_config"]
+                    self.topics = cfg["topics"]
             else:
                 self.logger.critical(f"Configuration file does not exist:{config}")
         except OSError:
@@ -43,8 +44,9 @@ class MQThread(threading.Thread):
             exit(rc)
         else:
             this.logger.info("mqtt cb: connected with result code "+str(rc))
-            client.subscribe('riaps/cmd')
-        # TODO: make configurable
+            # client.subscribe('riaps/cmd')
+            for topic in this.topics["subscriptions"]:
+                client.subscribe(topic)
     
     @staticmethod
     def on_socket_open(client, this, sock):
@@ -53,17 +55,24 @@ class MQThread(threading.Thread):
         
     @staticmethod
     def on_message(client, this, msg):
+        # stores received message into data_recv class variable.
         # TODO: This seems like it may not be the desired behavior.
         #  What if there are multiple messages? Then this.data_recv could be overwritten before it is processed
         #  in the run loop.
         #  This may be fine if the call to self.client.loop_read() only picks up one message.
         #  MQTTNodeRed/interfaces/MQTT.py:141
-        this.logger.info("mqtt cb: recv (%r) [%r] %r" % (client, msg.topic, msg.payload))
+        this.logger.info(f"Message from broker: {msg.topic} {str(msg.payload)}")
         this.data_recv = msg.payload
 
     @abc.abstractmethod
     def handle_broker_message(self, msg):
-        self.logger.info(f"handle_broker_message: {msg}")
+        for topic in self.topics["publications"]:
+            try:
+                msg_str = json.dumps(msg)
+                MQTTMessageInfo = self.client.publish(topic, msg_str)  # pub to the broker
+                # MQTTMessageInfo.wait_for_publish()
+            except TypeError as e:
+                self.logger.info(f"Publish failed: {e}")
 
     def handle_polled_sockets(self, socks):
         if self.broker_fileno in socks and \
@@ -73,9 +82,7 @@ class MQThread(threading.Thread):
             self.client.loop_write()
             self.client.loop_misc()
             if self.data_recv:
-                self.logger.info(f"data_recv: {self.data_recv}")
                 msg = json.loads(self.data_recv)
-                self.logger.info('MQThread recv(%r)' % msg)
                 self.handle_broker_message(msg)
                 self.data_recv = None
 
@@ -91,7 +98,7 @@ class MQThread(threading.Thread):
                 socks = dict(self.poller.poll(1000.0))  # Run the poller w/ 1 sec timeout
 
                 if len(socks) == 0:
-                    self.logger.info('MQThread timeout')
+                    self.logger.info('MQThread no new message')
                 if self.terminated.is_set():
                     break
                 self.handle_polled_sockets(socks)
@@ -112,6 +119,7 @@ class MQThread(threading.Thread):
             self.logger.error(f"UNEXPECTED ERROR, ADD TO EXCEPTION HANDLER: {e}")
 
         while self.broker is None:
+            self.logger.info(f"self.broker: {self.broker}")
             self.client.loop_read()
             self.client.loop_write()
             self.client.loop_misc()
@@ -156,9 +164,9 @@ class RiapsMQThread(MQThread):
         if self.plug in socks and socks[self.plug] == zmq.POLLIN:  # Input from the plug
             msg = self.plug.recv_pyobj()
             self.logger.info('MQThread pub(%r)' % msg)
-            self.client.publish('riaps/out', msg)  # pub to the broker
-            # TODO: allow to publish on multiple topics
-            # self.client.loop_write()
+            for topic in self.topics["publications"]:
+                self.client.publish(topic, msg)  # pub to the broker
+
         super(RiapsMQThread, self).handle_polled_sockets(socks)
 
     def run(self):
