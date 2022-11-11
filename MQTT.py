@@ -40,6 +40,7 @@ class MQThread(threading.Thread):
     
     @staticmethod
     def on_connect(client, this, flags, rc):
+        """Handler passed to mqtt client"""
         if rc != 0:
             exit(rc)
         else:
@@ -50,11 +51,13 @@ class MQThread(threading.Thread):
     
     @staticmethod
     def on_socket_open(client, this, sock):
+        """Handler passed to mqtt client"""
         this.logger.info("mqtt cb: socket open (%r) %r" % (client, sock))
         this.broker = sock 
         
     @staticmethod
     def on_message(client, this, msg):
+        """Handler passed to mqtt client"""
         # stores received message into data_recv class variable.
         # TODO: This seems like it may not be the desired behavior.
         #  What if there are multiple messages? Then this.data_recv could be overwritten before it is processed
@@ -66,13 +69,9 @@ class MQThread(threading.Thread):
 
     @abc.abstractmethod
     def handle_broker_message(self, msg):
-        for topic in self.topics["publications"]:
-            try:
-                msg_str = json.dumps(msg)
-                MQTTMessageInfo = self.client.publish(topic, msg_str)  # pub to the broker
-                # MQTTMessageInfo.wait_for_publish()
-            except TypeError as e:
-                self.logger.info(f"Publish failed: {e}")
+        """This is overwritten by the riaps class"""
+        pass
+   
 
     def handle_polled_sockets(self, socks):
         if self.broker_fileno in socks and \
@@ -119,6 +118,7 @@ class MQThread(threading.Thread):
             self.logger.error(f"UNEXPECTED ERROR, ADD TO EXCEPTION HANDLER: {e}")
 
         while self.broker is None:
+            """Wait for broker to be active"""
             self.logger.info(f"self.broker: {self.broker}")
             self.client.loop_read()
             self.client.loop_write()
@@ -160,14 +160,18 @@ class RiapsMQThread(MQThread):
         return self.plug_identity
     
     def handle_broker_message(self, msg):
-        self.plug.send_pyobj(msg)  # Send it to the plug
+        self.plug.send_pyobj(msg)
+        # Get message from the broker and send it to the plug.
+        # Which causes on_trigger to fire.
         
     def handle_polled_sockets(self, socks):
-        if self.plug in socks and socks[self.plug] == zmq.POLLIN:  # Input from the plug
+        if self.plug in socks and socks[self.plug] == zmq.POLLIN:
+            # Input from the Sgen via the plug. Publish to the broker
             msg = self.plug.recv_pyobj()
             self.logger.info('MQThread pub(%r)' % msg)
-            for topic in self.topics["publications"]:
-                self.client.publish(topic, msg)  # pub to the broker
+            data = msg["data"]
+            topic = msg["topic"]
+            self.client.publish(topic, data)  # pub to the broker
 
         super(RiapsMQThread, self).handle_polled_sockets(socks)
 
