@@ -13,3 +13,7 @@ Steps I took to install:
 
 Running
 1. `$ node-red` browse to http://127.0.0.1:1880
+
+
+How to use Node Red JS tabsheet:
+[Link](https://github.com/bartbutenaers/node-red-contrib-ui-svg/blob/master/docs/tabsheet_js.md)
