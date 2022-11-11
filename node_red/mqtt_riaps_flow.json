@@ -160,47 +160,6 @@
         "sessionExpiry": ""
     },
     {
-        "id": "80068970.6e2868",
-        "type": "ui_tab",
-        "name": "SVG",
-        "icon": "dashboard",
-        "disabled": false,
-        "hidden": false
-    },
-    {
-        "id": "935e3c31.38046",
-        "type": "ui_tab",
-        "name": "SVG demo",
-        "icon": "dashboard",
-        "disabled": false,
-        "hidden": false
-    },
-    {
-        "id": "3667e211.c08f0e",
-        "type": "ui_tab",
-        "name": "Home",
-        "icon": "dashboard",
-        "order": 1,
-        "disabled": false,
-        "hidden": false
-    },
-    {
-        "id": "93e19e4f.b80ed",
-        "type": "ui_tab",
-        "name": "SVG",
-        "icon": "dashboard",
-        "disabled": false,
-        "hidden": false
-    },
-    {
-        "id": "b4bb5633.ba92b8",
-        "type": "ui_tab",
-        "name": "SVG",
-        "icon": "dashboard",
-        "disabled": false,
-        "hidden": false
-    },
-    {
         "id": "2b0d519a436bb14b",
         "type": "ui_svg_graphics",
         "z": "0d31781428d3a880",
