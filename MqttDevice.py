@@ -17,9 +17,14 @@ class MqttDevice(Component):
             self.thread.start()  # Start
             self.trigger.set_identity(self.thread.get_identity(self.trigger))
             self.trigger.activate()
-        data = self.data.recv_pyobj()  # Receive data
+        data = self.data.recv_pyobj()  # Receive data from SGen
         self.logger.info('on_data():%r' % data)
-        self.trigger.send_pyobj(data)
+        msg = {"data": data,
+               "topic": "riaps/data"}
+        self.trigger.send_pyobj(msg)
+        # This puts the message on the plug.
+        # So when `handle_polled_sockets` is called it picks up this message
+        # and publishes it to the broker.
 
     def __destroy__(self):
         self.logger.info("__destroy__")
