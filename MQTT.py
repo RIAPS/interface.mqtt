@@ -71,7 +71,6 @@ class MQThread(threading.Thread):
     def handle_broker_message(self, msg):
         """This is overwritten by the riaps class"""
         pass
-   
 
     def handle_polled_sockets(self, socks):
         if self.broker_fileno in socks and \
