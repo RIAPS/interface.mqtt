@@ -27,7 +27,11 @@ class MqttDevice(Component):
         self.logger.info("__destroy__ed")
 
     def send_mqtt(self, msg: dict):
+        """ This puts the message on the inside channel,
+        so when `handle_polled_sockets` is called it picks up this message
+        and publishes it to the broker."""
         self.trigger.send_pyobj(msg)
+
 
     @abc.abstractmethod
     def on_trigger(self):  # Internally triggered operation
