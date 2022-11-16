@@ -2,6 +2,7 @@ import abc
 import json
 import os
 import paho.mqtt.client as mqtt
+import socket
 import threading
 import time
 import yaml
@@ -86,6 +87,7 @@ class MQThread(threading.Thread):
 
     def run(self):
         self.logger.info('MQThread starting')
+        self.mqtt_client()
         self.mqtt_connect()
 
         while 1:
@@ -93,7 +95,7 @@ class MQThread(threading.Thread):
             if self.terminated.is_set():
                 break
             if self.active.is_set():  # If we are active
-                socks = dict(self.poller.poll(1000.0))  # Run the poller w/ 1 sec timeout
+                socks = dict(self.poller.poll(1000))  # Run the poller w/ 1 sec timeout
 
                 if len(socks) == 0:
                     self.logger.info('MQThread no new message')
@@ -102,17 +104,22 @@ class MQThread(threading.Thread):
                 self.handle_polled_sockets(socks)
         self.logger.info('MQThread ended')
 
-    def mqtt_connect(self):
+    def mqtt_client(self):
         self.client = mqtt.Client()
         self.client.on_connect = MQThread.on_connect
         self.client.on_message = MQThread.on_message
         self.client.on_socket_open = MQThread.on_socket_open
         self.client.user_data_set(self)
 
+    def mqtt_connect(self):
         try:
             rc = self.client.connect(**self.broker_connect_config)
         except ValueError as e:
             self.logger.error(e)
+        except socket.error as e:
+            self.logger.error(f"Is Mqtt broker running?: {e}")
+            time.sleep(1)
+            self.mqtt_connect()
         except Exception as e:
             self.logger.error(f"UNEXPECTED ERROR, ADD TO EXCEPTION HANDLER: {e}")
 
@@ -165,12 +172,17 @@ class RiapsMQThread(MQThread):
         
     def handle_polled_sockets(self, socks):
         if self.plug in socks and socks[self.plug] == zmq.POLLIN:
-            # Input from the Sgen via the plug. Publish to the broker
+            # Input from riaps component via the inside port (trigger). Publish to the broker
             msg = self.plug.recv_pyobj()
             self.logger.info('MQThread pub(%r)' % msg)
             data = msg["data"]
             topic = msg["topic"]
-            self.client.publish(topic, data)  # pub to the broker
+            MQTTMessageInfo = self.client.publish(topic, data, qos=2)  # pub to the broker
+            rc = MQTTMessageInfo.rc
+            if rc is not 0:
+                self.logger.error(f"Failed to send message to broker. rc: {mqtt.error_string(rc)}")
+                if rc == mqtt.MQTT_ERR_NO_CONN:  # if the broker goes down, try to reconnect
+                    self.mqtt_connect()
 
         super(RiapsMQThread, self).handle_polled_sockets(socks)
 
