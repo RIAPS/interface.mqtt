@@ -179,7 +179,7 @@ class RiapsMQThread(MQThread):
             topic = msg["topic"]
             MQTTMessageInfo = self.client.publish(topic, data, qos=2)  # pub to the broker
             rc = MQTTMessageInfo.rc
-            if rc is not 0:
+            if rc != 0:
                 self.logger.error(f"Failed to send message to broker. rc: {mqtt.error_string(rc)}")
                 if rc == mqtt.MQTT_ERR_NO_CONN:  # if the broker goes down, try to reconnect
                     self.mqtt_connect()
