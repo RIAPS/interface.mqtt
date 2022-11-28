@@ -6,6 +6,3 @@ broker_connect_config:
 topics:
   subscriptions:
     - riaps/cmd
-  publications:
-    - riaps/ctrl
-    - riaps/data
