@@ -4,9 +4,9 @@ import queue
 import time
 
 from riaps.ctrl.ctrl import Controller
-import riaps.log.handlers.factory as handler_factory
-from riaps.log.server import AppLogServer
-import riaps.log.server
+import riaps.logger.drivers.factory as driver_factory
+from riaps.logger.server import AppLogServer
+import riaps.logger.server
 from riaps.utils.config import Config
 
 
@@ -33,18 +33,18 @@ def test_cli():
     the_config = Config()
     c = Controller(port=8888, script="-")
 
-    servers = {}
-    q = queue.Queue()
-    server_log_handler = handler_factory.get_handler(handler_type="testing", session_name="app")
-    app_log_server = AppLogServer(server_address=("172.21.20.70", 12345),
-                                  RequestHandlerClass=riaps.log.server.AppLogHandler,
-                                  server_log_handler=server_log_handler,
-                                  q=q)
-    p = multiprocessing.Process(target=app_log_server.serve_until_stopped)
-    servers["app"] = {"server": app_log_server,
-                      "process": p,
-                      "server_log_handler": server_log_handler}
-    p.start()
+    # servers = {}
+    # q = queue.Queue()
+    # server_log_handler = handler_factory.get_handler(handler_type="testing", session_name="app")
+    # app_log_server = AppLogServer(server_address=("172.21.20.70", 9021),
+    #                               RequestHandlerClass=riaps.log.server.AppLogHandler,
+    #                               server_log_handler=server_log_handler,
+    #                               q=q)
+    # p = multiprocessing.Process(target=app_log_server.serve_until_stopped)
+    # servers["app"] = {"server": app_log_server,
+    #                   "process": p,
+    #                   "server_log_handler": server_log_handler}
+    # p.start()
 
     if True:
         required_clients = ['172.21.20.40', '172.21.20.41', '172.21.20.50']
@@ -55,7 +55,8 @@ def test_cli():
         also_app_name = c.compileDeployment(depl_file)
 
         # start
-        c.startRedis()
+        # c.startRedis()
+        c.startDht()
         c.startService()
 
         # wait for clients to be discovered
@@ -72,9 +73,15 @@ def test_cli():
         # launchByName (line 746)
         print(f"app launched? {is_app_launched}")
 
-        for i in range(10):
-            print(f"App is running: {i}")
-            time.sleep(1)
+        manual_run = True
+        timed_run = False
+
+        if manual_run:
+            done = input("Provide input when ready to stop")
+        elif timed_run:
+            for i in range(10):
+                print(f"App is running: {i}")
+                time.sleep(1)
 
         # Halt application
         print("Halt app")
