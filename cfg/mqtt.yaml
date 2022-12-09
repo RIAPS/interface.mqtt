@@ -6,3 +6,4 @@ broker_connect_config:
 topics:
   subscriptions:
     - riaps/cmd
+    - mg/request_scenario
