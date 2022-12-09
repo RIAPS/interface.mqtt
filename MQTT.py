@@ -74,6 +74,8 @@ class MQThread(threading.Thread):
         pass
 
     def handle_polled_sockets(self, socks):
+        # Get messages from broker
+        # Riaps wrapper sends messages.
         if self.broker_fileno in socks and \
                 socks[self.broker_fileno] == zmq.POLLIN:  # Input from broker
             self.data_recv = None
@@ -167,6 +169,12 @@ class RiapsMQThread(MQThread):
     
     def handle_broker_message(self, msg):
         self.plug.send_pyobj(msg)
+        # TODO: instead of sending on plug this could also be sent on
+        #  a topic specific riaps port.
+        #  However, that seems more complex and error prone since it
+        #  requires modifying the .riaps file to add a port for every
+        #  subscribed topic.
+
         # Get message from the broker and send it to the plug.
         # Which causes on_trigger to fire.
         
