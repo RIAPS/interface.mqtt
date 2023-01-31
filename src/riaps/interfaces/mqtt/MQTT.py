@@ -46,7 +46,6 @@ class MQThread(threading.Thread):
             exit(rc)
         else:
             this.logger.info("mqtt cb: connected with result code "+str(rc))
-            # client.subscribe('riaps/cmd')
             for topic in this.topics["subscriptions"]:
                 client.subscribe(topic)
     

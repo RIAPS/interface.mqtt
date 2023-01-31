@@ -1,0 +1,28 @@
+app MQTTNodeRed {
+
+	message SineWave;
+	message Amplitude;
+
+	library interfaces;
+   
+	device MQTT(config) {
+		sub data : SineWave;
+		pub ampl : Amplitude; 
+		inside trigger; 
+	}
+	
+	component SGen {
+		timer tick 1000;
+		sub ampl : Amplitude;
+		pub sine : SineWave;
+	}
+
+	actor SineMQTT(mqtt_config) {
+		local SineWave, Amplitude;
+		{
+			mqtt : MQTT(config=mqtt_config);
+			sgen : SGen;
+		}
+	}
+
+}
