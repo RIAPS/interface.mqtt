@@ -44,12 +44,11 @@ def test_cli():
     c = Controller(port=8888, script="-")
 
     if True:
-        required_clients = ['172.21.20.45',
-                            '172.21.20.55']
+        required_clients = ['172.21.20.50']
         app_folder = "/home/riaps/projects/RIAPS/interface.mqtt/example"
         c.setAppFolder(app_folder)
-        app_name = c.compileApplication("canbus_example.riaps", app_folder)
-        depl_file = "canbus_example.depl"
+        app_name = c.compileApplication("mqnr.riaps", app_folder)
+        depl_file = "mqnr.depl"
         also_app_name = c.compileDeployment(depl_file)
 
         # start
