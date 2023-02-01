@@ -3,6 +3,7 @@ from riaps.run.comp import Component
 import logging
 import math
 
+
 class SGen(Component):
     def __init__(self):
         super(SGen, self).__init__()
