@@ -1,6 +1,6 @@
 import json
 
-from interfaces.MqttDevice import MqttDevice
+from riaps.interfaces.mqtt.MqttDevice import MqttDevice
 
 
 class MQTT(MqttDevice):
