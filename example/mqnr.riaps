@@ -3,7 +3,7 @@ app MQTTNodeRed {
 	message SineWave;
 	message Amplitude;
 
-	library interfaces;
+	library cfg;
    
 	device MQTT(config) {
 		sub data : SineWave;
