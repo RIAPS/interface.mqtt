@@ -1,7 +1,7 @@
 import abc
 from riaps.run.comp import Component
 
-from interfaces.MQTT import RiapsMQThread
+from riaps.interfaces.mqtt.MQTT import RiapsMQThread
 
 
 class MqttDevice(Component):
