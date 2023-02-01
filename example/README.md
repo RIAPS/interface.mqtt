@@ -42,6 +42,7 @@ class MQTT(MqttDevice):
     def on_trigger(self):
         msg = self.trigger.recv_pyobj()  ## Receive message from mqtt broker
         self.logger.info('on_trigger():%r' % msg)
+        # --- message handling logic here ---
 
     def some_function(self):
         payload = {"data": "some_data"}
@@ -67,6 +68,9 @@ The value [your topic] needs to match the subscription of the external service t
    1. ```commandline
       $ node-red
    2. browse to http://127.0.0.1:1880
+2. Launch the application using either `riaps_ctrl` or using the test with `pytest -s -v .`. 
+Elements of the SVG image will be updated by the application, specifically the colors on some relays as well as text by some elements. 
+Additionally, the amplitude of the sine wave displayed in the chart can be set using the Amplitude Control  can be set using the `Amplitude` selector and pressing the `SEND AMPLITUDE` button. The `Scenario Control` sends a message but has no feedback.
 
 # Troubleshooting
 
