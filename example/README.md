@@ -3,6 +3,33 @@
 ## Overview
 This is an example of how to use the device component implementation of MQTT for the RIAPS platform.
 
+The structure of sent message:
+
+```python
+import json
+payload = {"key": "value"}
+msg = {
+   "topic": str,  # e.g., "riaps/data"
+   "data": json.dumps(payload)}  # e.g., {}
+```
+received messages are dicts with the keys and values set by the external application.
+
+* Incoming Message flow
+
+|         | External | MQTT Broker | MQTT.py                | Application(MqttDevice) |
+|---------|----------|-------------|------------------------|-------------------------|
+| msg     | Json str | Json str    | MQTTMessage obj &darr; |                         | 
+| payload |          |             | python dict            | python dict             |
+
+* Outgoing Messages
+
+|         | Application(MqttDevice)        | MQTT.py                        | MQTT Broker | External                    |
+|---------|--------------------------------|--------------------------------|-------------|-----------------------------|
+| msg     | python dict                    | python dict => MQTTMessage obj | Json str    | Json str => required format |
+| payload | python dict => Json str &uarr; |                                |             |                             | 
+
+
+
 
 # Library tests
 To run the included test example the `interface.mqtt/example/mqnr.depl` and `required_clients` in `interface.mqtt/tests/test.py` must be updated to reflect your canbus device ip address. Then tests can be run with:
