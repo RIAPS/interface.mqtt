@@ -32,7 +32,7 @@ received messages are dicts with the keys and values set by the external applica
 
 
 # Library tests
-To run the included test example the `interface.mqtt/example/mqnr.depl` and `required_clients` in `interface.mqtt/tests/test.py` must be updated to reflect your canbus device ip address. Then tests can be run with:
+To run the included test example the `interface.mqtt/example/mqnr.depl` and `required_clients` in `interface.mqtt/tests/test_mqtt.py` must be updated to reflect your canbus device ip address. Then tests can be run with:
 ```commandline
 pytest -s .
 ```
