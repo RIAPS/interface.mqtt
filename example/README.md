@@ -16,10 +16,10 @@ received messages are dicts with the keys and values set by the external applica
 
 * Incoming Message flow
 
-|         | External | MQTT Broker | MQTT.py                | Application(MqttDevice) |
-|---------|----------|-------------|------------------------|-------------------------|
-| msg     | Json str | Json str    | MQTTMessage obj &darr; |                         | 
-| payload |          |             | python dict            | python dict             |
+|         | External        | MQTT Broker | MQTT.py                 | Application(MqttDevice) |
+|---------|-----------------|-------------|-------------------------|-------------------------|
+| msg     | Json str        | Json str    | MQTTMessage obj &darr;  |                         | 
+| payload | Json str &uarr; |             | Json str => python dict | python dict             |
 
 * Outgoing Messages
 
