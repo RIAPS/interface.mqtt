@@ -1,4 +1,4 @@
-# MQTT + Node Red example application
+# MQTT + Node Red Example Application
 
 ## Overview
 This is an example of how to use the device component implementation of MQTT for the RIAPS platform.
@@ -29,14 +29,6 @@ received messages are dicts with the keys and values set by the external applica
 | payload | python dict => Json str &uarr; |                                |             |                             | 
 
 
-
-
-# Library tests
-To run the included test example the `interface.mqtt/example/mqnr.depl` and `required_clients` in `interface.mqtt/tests/test_mqtt.py` must be updated to reflect your canbus device ip address. Then tests can be run with:
-```commandline
-pytest -s .
-```
-
 # Application Developer Notes
 
 An application using an MQTT device requires:
@@ -44,20 +36,20 @@ An application using an MQTT device requires:
 2. Specification of the device in the application's (dot)riaps file
 3. A python class file implementing the MQTT device component specified in the (dot)riaps file. 
 
-### MQTT device configuration YAML file
+### MQTT Device Configuration YAML File
 The MQTT device configuration YAML file defines:
 1. the parameters required to connect to an MQTT server (see [link](https://pypi.org/project/paho-mqtt/#connect-reconnect-disconnect)). 
 2. A list of topics to subscribe to specified under `subscriptions`
 
-### RIAPS application file
-The (dot)riaps file  must contain a device that takes a configuration file and provides an inside port called trigger. 
+### RIAPS Application File
+The (dot)riaps file must contain a device that takes a configuration file and provides an inside port called trigger. 
 ```
 device MQTT(config) {
 		inside trigger; 
 	}
 ```
 
-### Python MQTT device class 
+### Python MQTT Device Class 
 
 The python class file implementing the MQTT device component specified in the (dot)riaps file inherits from `MqttDevice` class from ` riaps.interfaces.mqtt/MqttDevice.py` and must implement the `on_trigger` handler.
 ```python
@@ -87,17 +79,30 @@ msg = {"data": "[your data]",
        "topic": "[your topic]"}
 ```
 
-The value [your topic] needs to match the subscription of the external service that will receive the message, for example, `"riaps/data"`. [your data] is the actual message to send. If not given, or set to None a zero length message will be used. Passing an int or float will result in the payload being converted to a string representing that number. If you wish to send a true int/float, use struct.pack() to create the payload you require. If you want to send a python dictionary first convert it to a string using `json.dumps(payload)`. 
+The value `[your topic]` needs to match the subscription of the external service that will receive the message, for example, `"riaps/data"`. `[your data]` is the actual message to send. If not given, or set to `"None"`, a zero length message will be used. Passing an int or float will result in the payload being converted to a string representing that number. If you wish to send a true int/float, use `struct.pack()` to create the payload you require. If you want to send a python dictionary first convert it to a string using `json.dumps(payload)`. 
 
-# How to use this example
+# How to Use this Example
 
 1. Start node red
    1. ```commandline
       $ node-red
+      ```
    2. browse to http://127.0.0.1:1880
-2. Launch the application using either `riaps_ctrl` or using the test with `pytest -s -v .`. 
-Elements of the SVG image will be updated by the application, specifically the colors on some relays as well as text by some elements. 
-Additionally, the amplitude of the sine wave displayed in the chart can be set using the Amplitude Control  can be set using the `Amplitude` selector and pressing the `SEND AMPLITUDE` button. The `Scenario Control` sends a message but has no feedback.
+2. Launch the application using `riaps_ctrl`
+ 
+Elements of the SVG image will be updated by the application, specifically the colors on some relays as well as text by some elements. Additionally, the amplitude of the sine wave displayed in the chart can be set using the `Amplitude` selector and pressing the `SEND AMPLITUDE` button. The `Scenario Control` sends a message, but has no feedback.
+
+
+# Tests for Library Developers
+When installing this package, use the following command to include additional testing packages:
+```commandline
+sudo python3 -m pip install .[dev]
+```
+
+To run the included test example, the `interface.mqtt/example/mqnr.depl` and `required_clients` in `interface.mqtt/tests/test_mqtt.py` must be updated to reflect your canbus device IP address. Then tests can be run with:
+```commandline
+pytest -s -v .
+```
 
 # Troubleshooting
 
