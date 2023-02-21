@@ -99,7 +99,7 @@ class MQThread(threading.Thread):
                 socks = dict(self.poller.poll(1000))  # Run the poller w/ 1 sec timeout
 
                 if len(socks) == 0:
-                    self.logger.info('MQThread no new message')
+                    self.logger.debug('MQThread no new message')
                 if self.terminated.is_set():
                     break
                 self.handle_polled_sockets(socks)
@@ -181,7 +181,7 @@ class RiapsMQThread(MQThread):
         if self.plug in socks and socks[self.plug] == zmq.POLLIN:
             # Input from riaps component via the inside port (trigger). Publish to the broker
             msg = self.plug.recv_pyobj()
-            self.logger.info('MQThread pub(%r)' % msg)
+            self.logger.debug('MQThread pub(%r)' % msg)
             data = msg["data"]
             topic = msg["topic"]
             MQTTMessageInfo = self.client.publish(topic, data, qos=2)  # pub to the broker
