@@ -1,0 +1,8 @@
+app MQTTNodeRed {
+
+     host 172.21.20.50 {
+        network 172.21.20.70; //IP address of riaps_app_log_server
+    }
+
+    on (172.21.20.50) SineMQTT(mqtt_config="cfg/mqtt.yaml");
+}

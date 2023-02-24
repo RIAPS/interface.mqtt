@@ -1,1 +1,9 @@
 __pycache__
+.idea
+dev/
+*.cert
+*.key
+riaps.yaml
+*.egg-info
+build
+MQTTNodeRed.json
