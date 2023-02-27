@@ -21,6 +21,17 @@ These are required on the RIAPS `ctrl` node.
 # Installation
 
 ## Install RIAPS MQTT library
+
+* On single node locally
+```commandline
+sudo python3 -m pip install 'riaps.interfaces.mqtt @ git+https://github.com/RIAPS/interface.mqtt.git'
+```
+* On cluster of nodes using python fabric
+```commandline
+riaps_fab sys.sudo:'"python3 -m pip install git+https://github.com/RIAPS/interface.mqtt.git"'
+```
+
+* Via cloning
 ```commandline
 git clone https://github.com/RIAPS/interface.mqtt.git
 cd interface.mqtt
