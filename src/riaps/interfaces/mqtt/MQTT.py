@@ -13,6 +13,7 @@ class MQThread(threading.Thread):
     """
     Inner MQTT thread
     """
+
     def __init__(self, logger, config):
         threading.Thread.__init__(self, daemon=True)
         self.client = None
@@ -38,23 +39,23 @@ class MQThread(threading.Thread):
                 self.logger.critical(f"Configuration file does not exist:{config}")
         except OSError:
             self.logger.critical(f"File I/O error:{config}")
-    
+
     @staticmethod
     def on_connect(client, this, flags, rc):
         """Handler passed to mqtt client"""
         if rc != 0:
             exit(rc)
         else:
-            this.logger.info("mqtt cb: connected with result code "+str(rc))
+            this.logger.info("mqtt cb: connected with result code " + str(rc))
             for topic in this.topics["subscriptions"]:
                 client.subscribe(topic)
-    
+
     @staticmethod
     def on_socket_open(client, this, sock):
         """Handler passed to mqtt client"""
         this.logger.info("mqtt cb: socket open (%r) %r" % (client, sock))
-        this.broker = sock 
-        
+        this.broker = sock
+
     @staticmethod
     def on_message(client, this, msg):
         """Handler passed to mqtt client"""
@@ -66,6 +67,14 @@ class MQThread(threading.Thread):
         #  MQTTNodeRed/interfaces/MQTT.py:141
         this.logger.info(f"Message from broker: {msg.topic} {str(msg.payload)}")
         this.data_recv = msg.payload
+
+    @staticmethod
+    def on_publish(client, userdata, mid):
+        pass
+        # userdata.logger.info(f"on_publish"
+        #                      f"client: {client}"
+        #                      f"userdata: {userdata}"
+        #                      f"mid: {mid}")
 
     @abc.abstractmethod
     def handle_broker_message(self, msg):
@@ -110,7 +119,12 @@ class MQThread(threading.Thread):
         self.client.on_connect = MQThread.on_connect
         self.client.on_message = MQThread.on_message
         self.client.on_socket_open = MQThread.on_socket_open
+        self.client.on_publish = MQThread.on_publish
         self.client.user_data_set(self)
+
+    def send(self, topic, data, qos):
+        MQTTMessageInfo = self.client.publish(topic, data, qos=qos)  # pub to the broker
+        return MQTTMessageInfo
 
     def mqtt_connect(self):
         try:
@@ -139,11 +153,11 @@ class MQThread(threading.Thread):
     def activate(self):
         self.active.set()
         self.logger.info('MQThread activated')
-                    
+
     def deactivate(self):
         self.active.clear()
         self.logger.info('MQThread deactivated')
-    
+
     def terminate(self):
         self.active.set()
         self.terminated.set()
@@ -165,7 +179,7 @@ class RiapsMQThread(MQThread):
                     break
                 time.sleep(0.1)
         return self.plug_identity
-    
+
     def handle_broker_message(self, msg):
         self.plug.send_pyobj(msg)
         # TODO: instead of sending on plug this could also be sent on
@@ -176,7 +190,7 @@ class RiapsMQThread(MQThread):
 
         # Get message from the broker and send it to the plug.
         # Which causes on_trigger to fire.
-        
+
     def handle_polled_sockets(self, socks):
         if self.plug in socks and socks[self.plug] == zmq.POLLIN:
             # Input from riaps component via the inside port (trigger). Publish to the broker
@@ -184,7 +198,7 @@ class RiapsMQThread(MQThread):
             self.logger.debug('MQThread pub(%r)' % msg)
             data = msg["data"]
             topic = msg["topic"]
-            MQTTMessageInfo = self.client.publish(topic, data, qos=2)  # pub to the broker
+            MQTTMessageInfo = self.client.publish(topic, data, qos=0)  # pub to the broker
             rc = MQTTMessageInfo.rc
             if rc != 0:
                 self.logger.error(f"Failed to send message to broker. rc: {mqtt.error_string(rc)}")
