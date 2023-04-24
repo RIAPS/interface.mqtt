@@ -1,5 +1,4 @@
 import json
-import multiprocessing
 import watchdog
 import watchdog.events
 import watchdog.observers
@@ -19,7 +18,7 @@ def test_sanity():
 
 @pytest.mark.skip
 def test_mqtt():
-    from MQTT import MQThread
+    from riaps.interfaces.mqtt.MQTT import MQThread
     import logging
     logging.basicConfig()
     logger = logging.getLogger()

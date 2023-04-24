@@ -9,6 +9,12 @@ import yaml
 import zmq
 
 
+def load_mqtt_config(path_to_config):
+    with open(path_to_config, 'r') as cfg_file:
+        cfg = yaml.safe_load(cfg_file)
+        return cfg
+
+
 class MQThread(threading.Thread):
     """
     Inner MQTT thread
@@ -25,21 +31,10 @@ class MQThread(threading.Thread):
         self.terminated.clear()
         self.broker = None
         self.broker_fileno = None
-        # self.poller = None
         self.poller = zmq.Poller()  # Set up poller to wait for messages from either side
 
-        try:
-            if os.path.exists(config):
-                # Load config file
-                with open(config, 'r') as cfg_file:
-                    cfg = yaml.safe_load(cfg_file)
-                    self.cfg = cfg
-                    self.broker_connect_config = cfg["broker_connect_config"]
-                    self.topics = cfg["topics"]
-            else:
-                self.logger.critical(f"Configuration file does not exist:{config}")
-        except OSError:
-            self.logger.critical(f"File I/O error:{config}")
+        self.broker_connect_config = config["broker_connect_config"]
+        self.topics = config["topics"]
 
     @staticmethod
     def on_connect(client, this, flags, rc):

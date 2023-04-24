@@ -2,6 +2,7 @@ import abc
 from riaps.run.comp import Component
 
 from riaps.interfaces.mqtt.MQTT import RiapsMQThread
+from riaps.interfaces.mqtt.MQTT import load_mqtt_config
 
 
 class MqttDevice(Component):
@@ -9,7 +10,7 @@ class MqttDevice(Component):
         super().__init__()
         self.logger.info("MQTT - starting")
         self.thread = None
-        self.mqtt_config = mqtt_config
+        self.mqtt_config = load_mqtt_config(mqtt_config)
 
     def handleActivate(self):
         if self.thread is None:  # First clock pulse
