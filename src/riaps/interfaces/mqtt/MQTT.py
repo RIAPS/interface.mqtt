@@ -33,6 +33,7 @@ class MQThread(threading.Thread):
                 # Load config file
                 with open(config, 'r') as cfg_file:
                     cfg = yaml.safe_load(cfg_file)
+                    self.cfg = cfg
                     self.broker_connect_config = cfg["broker_connect_config"]
                     self.topics = cfg["topics"]
             else:
@@ -166,7 +167,7 @@ class MQThread(threading.Thread):
 
 class RiapsMQThread(MQThread):
     def __init__(self, trigger, logger, config):
-        super(RiapsMQThread, self).__init__(logger, config)
+        super().__init__(logger, config)
         self.trigger = trigger  # inside RIAPS port
         self.plug = None
         self.plug_identity = None

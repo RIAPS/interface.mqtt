@@ -6,7 +6,7 @@ from riaps.interfaces.mqtt.MQTT import RiapsMQThread
 
 class MqttDevice(Component):
     def __init__(self, mqtt_config):
-        super(MqttDevice, self).__init__()
+        super().__init__()
         self.logger.info("MQTT - starting")
         self.thread = None
         self.mqtt_config = mqtt_config
