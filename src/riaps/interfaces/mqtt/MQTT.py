@@ -75,7 +75,7 @@ class MQThread(threading.Thread):
     @abc.abstractmethod
     def handle_broker_message(self, msg):
         """This is overwritten by the riaps class"""
-        pass
+        self.logger.info(f"handle_broker_message: {msg}")
 
     def handle_polled_sockets(self, socks):
         # Get messages from broker
@@ -96,21 +96,15 @@ class MQThread(threading.Thread):
         self.mqtt_client()
         self.mqtt_connect()
 
-        while 1:
-            self.active.wait(None)  # Events to handle activation/termination
-            if self.terminated.is_set():
-                break
-            if self.active.is_set():  # If we are active
+        while not self.terminated.is_set():
+            self.active.wait(None)  # Pauses the loop until active is set
+            if self.active.is_set():  # Check again in case terminate was called
                 socks = dict(self.poller.poll(1000))  # Run the poller w/ 1 sec timeout
-
-                if len(socks) == 0:
-                    self.logger.debug('MQThread no new message')
-                if self.terminated.is_set():
-                    break
-                self.handle_polled_sockets(socks)
+                self.handle_polled_sockets(socks) if len(socks) > 0 else self.logger.debug('MQThread no new message')
         self.logger.info('MQThread ended')
 
     def mqtt_client(self):
+        self.logger.info("Creating mqtt client")
         self.client = mqtt.Client()
         self.client.on_connect = MQThread.on_connect
         self.client.on_message = MQThread.on_message
@@ -123,6 +117,7 @@ class MQThread(threading.Thread):
         return MQTTMessageInfo
 
     def mqtt_connect(self):
+        self.logger.info("Connecting to mqtt broker")
         try:
             rc = self.client.connect(**self.broker_connect_config)
         except ValueError as e:
@@ -141,6 +136,7 @@ class MQThread(threading.Thread):
             self.client.loop_write()
             self.client.loop_misc()
             if self.broker is None:
+                self.logger.info("Waiting for broker to be active")
                 time.sleep(1)
 
         self.broker_fileno = self.broker.fileno()
@@ -194,7 +190,7 @@ class RiapsMQThread(MQThread):
             self.logger.debug('MQThread pub(%r)' % msg)
             data = msg["data"]
             topic = msg["topic"]
-            MQTTMessageInfo = self.client.publish(topic, data, qos=0)  # pub to the broker
+            MQTTMessageInfo = self.client.publish(topic, data, qos=2)  # pub to the broker
             rc = MQTTMessageInfo.rc
             if rc != 0:
                 self.logger.error(f"Failed to send message to broker. rc: {mqtt.error_string(rc)}")

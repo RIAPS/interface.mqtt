@@ -25,7 +25,7 @@ class MqttDevice(Component):
             self.thread.deactivate()
             self.thread.terminate()
             self.thread.join()
-        self.logger.info("__destroy__ed")
+        self.logger.info("__destroyed__")
 
     def send_mqtt(self, msg: dict):
         """ This puts the message on the inside channel,
