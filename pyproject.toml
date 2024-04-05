@@ -21,7 +21,7 @@ classifiers = [
     "Operating System :: Linux",
 ]
 dependencies = [
-    "paho-mqtt",
+    "paho-mqtt<2.0.0",
     "riaps-pycom"
 ]
 
