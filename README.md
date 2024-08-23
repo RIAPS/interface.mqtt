@@ -37,3 +37,14 @@ git clone https://github.com/RIAPS/interface.mqtt.git
 cd interface.mqtt
 sudo python3 -m pip install .
 ```
+
+## Configure FlashMQ
+* Ensure that the broker is running with `sudo systemctl status flashmq.service`. Check the Loaded and Active lines. Should be something like:
+
+     ```
+     $ sudo systemctl status flashmq.service
+     Loaded: loaded (/lib/systemd/system/flashmq.service; enabled; vendor preset: enabled)
+     Active: active (running) since Mon 2024-08-19 14:05:55 UTC; 4 days ago
+     ```
+     
+*  Allow anonymous connections by adding the line `allow_anonymous true` to the `/etc/flashmq/flashmq.conf` file ([source](https://github.com/halfgaar/FlashMQ))
