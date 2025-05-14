@@ -22,7 +22,6 @@ classifiers = [
 ]
 dependencies = [
     "paho-mqtt<2.0.0",
-    "riaps-pycom"
 ]
 
 [project.optional-dependencies]
