@@ -10,7 +10,7 @@ import zmq
 
 
 def load_mqtt_config(path_to_config):
-    with open(path_to_config, 'r') as cfg_file:
+    with open(path_to_config, "r") as cfg_file:
         cfg = yaml.safe_load(cfg_file)
         return cfg
 
@@ -31,7 +31,9 @@ class MQThread(threading.Thread):
         self.terminated.clear()
         self.broker = None
         self.broker_fileno = None
-        self.poller = zmq.Poller()  # Set up poller to wait for messages from either side
+        self.poller = (
+            zmq.Poller()
+        )  # Set up poller to wait for messages from either side
 
         self.broker_connect_config = config["broker_connect_config"]
         self.topics = config["topics"]
@@ -77,11 +79,12 @@ class MQThread(threading.Thread):
         """This is overwritten by the riaps class"""
         self.logger.info(f"handle_broker_message: {msg}")
 
-    def handle_polled_sockets(self, socks):
+    def _handle_polled_sockets(self, socks):
         # Get messages from broker
         # Riaps wrapper sends messages.
-        if self.broker_fileno in socks and \
-                socks[self.broker_fileno] == zmq.POLLIN:  # Input from broker
+        if (
+            self.broker_fileno in socks and socks[self.broker_fileno] == zmq.POLLIN
+        ):  # Input from broker
             self.data_recv = None
             self.client.loop_read()
             self.client.loop_write()
@@ -92,31 +95,40 @@ class MQThread(threading.Thread):
                 self.data_recv = None
 
     def run(self):
-        self.logger.info('MQThread starting')
-        self.mqtt_client()
-        self.mqtt_connect()
+        self.logger.info("MQThread starting")
+        self._mqtt_client()
+        self._mqtt_connect()
+        self._poll()
 
+    def _poll(self):
+        self.logger.info(f"Start polling")
         while not self.terminated.is_set():
+            if not self.active.is_set():
+                self.logger.info("MQThread waiting for active")
             self.active.wait(None)  # Pauses the loop until active is set
             if self.active.is_set():  # Check again in case terminate was called
                 socks = dict(self.poller.poll(1000))  # Run the poller w/ 1 sec timeout
-                self.handle_polled_sockets(socks) if len(socks) > 0 else self.logger.debug('MQThread no new message')
-        self.logger.info('MQThread ended')
+                (
+                    self._handle_polled_sockets(socks)
+                    if len(socks) > 0
+                    else self.logger.debug("MQThread no new message")
+                )
+        self.logger.info("MQThread ended")
 
-    def mqtt_client(self):
+    def _mqtt_client(self):
         self.logger.info("Creating mqtt client")
         self.client = mqtt.Client()
-        self.client.on_connect = MQThread.on_connect
-        self.client.on_message = MQThread.on_message
-        self.client.on_socket_open = MQThread.on_socket_open
-        self.client.on_publish = MQThread.on_publish
+        self.client.on_connect = self.on_connect
+        self.client.on_message = self.on_message
+        self.client.on_socket_open = self.on_socket_open
+        self.client.on_publish = self.on_publish
         self.client.user_data_set(self)
 
     def send(self, topic, data, qos):
         MQTTMessageInfo = self.client.publish(topic, data, qos=qos)  # pub to the broker
         return MQTTMessageInfo
 
-    def mqtt_connect(self):
+    def _mqtt_connect(self):
         self.logger.info("Connecting to mqtt broker")
         try:
             rc = self.client.connect(**self.broker_connect_config)
@@ -144,16 +156,16 @@ class MQThread(threading.Thread):
 
     def activate(self):
         self.active.set()
-        self.logger.info('MQThread activated')
+        self.logger.info("MQThread activated")
 
     def deactivate(self):
         self.active.clear()
-        self.logger.info('MQThread deactivated')
+        self.logger.info("MQThread deactivated")
 
     def terminate(self):
         self.active.set()
         self.terminated.set()
-        self.logger.info('MQThread terminating')
+        self.logger.info("MQThread terminating")
 
 
 class RiapsMQThread(MQThread):
@@ -187,22 +199,32 @@ class RiapsMQThread(MQThread):
         if self.plug in socks and socks[self.plug] == zmq.POLLIN:
             # Input from riaps component via the inside port (trigger). Publish to the broker
             msg = self.plug.recv_pyobj()
-            self.logger.debug('MQThread pub(%r)' % msg)
+            self.logger.debug("MQThread pub(%r)" % msg)
             data = msg["data"]
             topic = msg["topic"]
-            MQTTMessageInfo = self.client.publish(topic, data, qos=2)  # pub to the broker
+            MQTTMessageInfo = self.client.publish(
+                topic, data, qos=2
+            )  # pub to the broker
             rc = MQTTMessageInfo.rc
             if rc != 0:
-                self.logger.error(f"Failed to send message to broker. rc: {mqtt.error_string(rc)}")
-                if rc == mqtt.MQTT_ERR_NO_CONN:  # if the broker goes down, try to reconnect
+                self.logger.error(
+                    f"Failed to send message to broker. rc: {mqtt.error_string(rc)}"
+                )
+                if (
+                    rc == mqtt.MQTT_ERR_NO_CONN
+                ):  # if the broker goes down, try to reconnect
                     self.mqtt_connect()
 
         super(RiapsMQThread, self).handle_polled_sockets(socks)
 
     def run(self):
-        self.logger.info('MQThread starting')
+        self.logger.info("MQThread starting")
 
-        self.plug = self.trigger.setupPlug(self)  # Ask RIAPS port to make a plug (zmq socket) for this end
-        self.poller.register(self.plug, zmq.POLLIN)  # plug socket (connects to trigger port of parent device comp)
+        self.plug = self.trigger.setupPlug(
+            self
+        )  # Ask RIAPS port to make a plug (zmq socket) for this end
+        self.poller.register(
+            self.plug, zmq.POLLIN
+        )  # plug socket (connects to trigger port of parent device comp)
 
         super(RiapsMQThread, self).run()
