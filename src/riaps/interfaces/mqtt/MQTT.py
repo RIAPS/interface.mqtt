@@ -137,7 +137,7 @@ class MQThread(threading.Thread):
         except socket.error as e:
             self.logger.error(f"Is Mqtt broker running?: {e}")
             time.sleep(1)
-            self.mqtt_connect()
+            self._mqtt_connect()
         except Exception as e:
             self.logger.error(f"UNEXPECTED ERROR, ADD TO EXCEPTION HANDLER: {e}")
 
@@ -195,7 +195,7 @@ class RiapsMQThread(MQThread):
         # Get message from the broker and send it to the plug.
         # Which causes on_trigger to fire.
 
-    def handle_polled_sockets(self, socks):
+    def _handle_polled_sockets(self, socks):
         if self.plug in socks and socks[self.plug] == zmq.POLLIN:
             # Input from riaps component via the inside port (trigger). Publish to the broker
             msg = self.plug.recv_pyobj()
@@ -213,9 +213,9 @@ class RiapsMQThread(MQThread):
                 if (
                     rc == mqtt.MQTT_ERR_NO_CONN
                 ):  # if the broker goes down, try to reconnect
-                    self.mqtt_connect()
+                    self._mqtt_connect()
 
-        super(RiapsMQThread, self).handle_polled_sockets(socks)
+        super(RiapsMQThread, self)._handle_polled_sockets(socks)
 
     def run(self):
         self.logger.info("MQThread starting")
