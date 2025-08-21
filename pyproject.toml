@@ -1,35 +1,26 @@
-[build-system]
-requires = ["setuptools", "setuptools-scm"]
-build-backend = "setuptools.build_meta"
-
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-
 [project]
-name = "riaps-interfaces-mqtt"
+authors = [{name = "eiselesr", email = "eiselesr@gmail.com"}]
+dependencies = []
+name = "interface.mqtt"
+requires-python = ">= 3.11"
 version = "0.1.0"
-authors = [
-  { name="RIAPS"},
-]
-description = "A riaps interface library for MQTT"
-readme = "README.md"
-requires-python = ">=3.8"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "Operating System :: Linux",
-]
-dependencies = [
-    "paho-mqtt<2.0.0",
-]
 
-[project.optional-dependencies]
-dev = [
-    "watchdog",
-    "pytest"
-]
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
 
-[project.urls]
-"Homepage" = "hhttps://github.com/RIAPS/interface.mqtt"
-"Bug Tracker" = "https://github.com/RIAPS/interface.mqtt/issues"
+[tool.pixi.project]
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64"]
+
+[tool.pixi.pypi-dependencies]
+interface_mqtt = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+install-nodered = "npm install -g node-red"
+start = "node-red"
+
+[tool.pixi.dependencies]
+paho-mqtt = ">=2.1.0,<3"
+nodejs = ">=24.4.1,<24.5"
+mosquitto = ">=2.0.15,<3"
