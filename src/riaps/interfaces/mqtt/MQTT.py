@@ -90,8 +90,11 @@ class MQThread(threading.Thread):
             self.client.loop_write()
             self.client.loop_misc()
             if self.data_recv:
-                msg = json.loads(self.data_recv)
-                self.handle_broker_message(msg)
+                try:
+                    msg = json.loads(self.data_recv)
+                    self.handle_broker_message(msg)
+                except Exception as e:
+                    self.logger.error(f"Failed to decode message: {e}")
                 self.data_recv = None
 
     def run(self):
@@ -111,7 +114,7 @@ class MQThread(threading.Thread):
                 (
                     self._handle_polled_sockets(socks)
                     if len(socks) > 0
-                    else self.logger.debug("MQThread no new message")
+                    else self.logger.info("MQThread no new message")
                 )
         self.logger.info("MQThread ended")
 

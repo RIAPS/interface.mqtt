@@ -7,3 +7,7 @@ riaps.yaml
 *.egg-info
 build
 MQTTNodeRed.json
+
+# pixi environments
+.pixi
+*.egg-info
