@@ -11,6 +11,9 @@ dependencies = [
 build-backend = "hatchling.build" # Corrected from "hasting.build"
 requires = ["hatchling"]
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/riaps"]
+
 # === PIXI PROJECT & ENVIRONMENTS ===
 [tool.pixi.project]
 channels = ["conda-forge"]
