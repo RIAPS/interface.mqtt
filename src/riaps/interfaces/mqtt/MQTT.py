@@ -214,6 +214,17 @@ class MQThread(threading.Thread):
         self.logger.info("MQThread deactivated")
 
     def terminate(self):
+        # Clean up all registered sockets
+        for sock in list(self.fileno_to_socket.values()):
+            try:
+                self.poller.unregister(sock)
+            except Exception:
+                pass
+            try:
+                sock.close()
+            except Exception:
+                pass
+        self.fileno_to_socket.clear()
         self.active.set()
         self.terminated.set()
         self.logger.info("MQThread terminating")
