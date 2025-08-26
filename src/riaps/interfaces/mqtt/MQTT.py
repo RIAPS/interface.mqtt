@@ -171,7 +171,7 @@ class MQThread(threading.Thread):
                     if len(socks) > 0:
                         self._handle_polled_sockets(socks)
                     else:
-                        self.logger.info("MQThread no new message")
+                        self.logger.debug("MQThread no new message")
         self.logger.info("MQThread ended")
 
     def _mqtt_client(self):
