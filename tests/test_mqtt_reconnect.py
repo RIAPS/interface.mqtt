@@ -49,15 +49,13 @@ def test_mqtt_reconnect_on_broker_restart():
         # Make sure the mock client is set up
         thread._mqtt_client()
 
-        # Start thread in background
-        t = threading.Thread(target=thread._mqtt_connect)
-        t.start()
-        time.sleep(0.2)
-        # Simulate broker socket open after connect succeeds
-        thread.on_socket_open(instance, thread, dummy_sock)
-        # After first failure, should retry and succeed
-        t.join(timeout=2)
-        assert instance.connect.call_count == 2
-        # Now simulate sending a message
-        result = thread.send("test/topic", "payload", qos=0)
-        assert result.rc == 0
+    # First attempt fails
+    assert not thread._mqtt_connect()
+    # Second attempt (connect succeeds, but broker not set until on_socket_open)
+    thread._mqtt_connect()
+    thread.on_socket_open(instance, thread, dummy_sock)
+    assert instance.connect.call_count == 2
+    assert thread.broker is not None
+    # Now simulate sending a message
+    result = thread.send("test/topic", "payload", qos=0)
+    assert result.rc == 0
