@@ -1,35 +1,47 @@
-[build-system]
-requires = ["setuptools", "setuptools-scm"]
-build-backend = "setuptools.build_meta"
-
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-
 [project]
-name = "riaps-interfaces-mqtt"
+name = "interface.mqtt"
 version = "0.1.0"
-authors = [
-  { name="RIAPS"},
-]
-description = "A riaps interface library for MQTT"
-readme = "README.md"
-requires-python = ">=3.8"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "Operating System :: Linux",
-]
+authors = [{name = "eiselesr", email = "eiselesr@gmail.com"}]
+requires-python = ">= 3.11"
 dependencies = [
-    "paho-mqtt<2.0.0",
-]
+    "paho-mqtt>=2.1.0,<3"
+, "pyyaml", "pyzmq", "pydantic"]
 
-[project.optional-dependencies]
-dev = [
-    "watchdog",
-    "pytest"
-]
+[build-system]
+build-backend = "hatchling.build" # Corrected from "hasting.build"
+requires = ["hatchling"]
 
-[project.urls]
-"Homepage" = "hhttps://github.com/RIAPS/interface.mqtt"
-"Bug Tracker" = "https://github.com/RIAPS/interface.mqtt/issues"
+# === PIXI PROJECT & ENVIRONMENTS ===
+[tool.pixi.project]
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64"]
+
+[tool.pixi.environments]
+dev = ["dev"] 
+
+# === PIXI DEFAULT DEPENDENCIES ===
+[tool.pixi.dependencies]
+paho-mqtt = ">=2.1.0,<3"
+pyyaml = ">=6.0.2,<7"
+pyzmq = ">=27.0.1,<28"
+pydantic = ">=2.11.7,<3"
+
+[tool.pixi.pypi-dependencies]
+interface_mqtt = { path = ".", editable = true }
+
+# === PIXI 'dev' FEATURE ===
+[tool.pixi.feature.dev.dependencies]
+nodejs = ">=24.4.1,<24.5"
+mosquitto = ">=2.0.15,<3"
+pytest = ">=8.4.1,<9"
+structlog = ">=25.4.0,<26"
+pytest-cov = ">=6.2.1,<7"
+
+[tool.pixi.feature.dev.tasks]
+install-nodered = "npm install -g node-red"
+start-nodered = "node-red"
+start-broker = "amqtt"
+
+[dependency-groups]
+dev = ["amqtt>=0.11.3,<0.12"]
+

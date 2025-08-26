@@ -1,3 +1,4 @@
+from pydantic import BaseModel, ValidationError
 import abc
 import json
 import os
@@ -13,6 +14,12 @@ def load_mqtt_config(path_to_config):
     with open(path_to_config, "r") as cfg_file:
         cfg = yaml.safe_load(cfg_file)
         return cfg
+
+
+# Define a Pydantic model for the expected MQTT message
+class MqttMessage(BaseModel):
+    data: object  # Accept any JSON-serializable object
+    topic: str
 
 
 class MQThread(threading.Thread):
@@ -31,6 +38,7 @@ class MQThread(threading.Thread):
         self.terminated.clear()
         self.broker = None
         self.broker_fileno = None
+        self.fileno_to_socket = {}
         self.poller = (
             zmq.Poller()
         )  # Set up poller to wait for messages from either side
@@ -80,39 +88,90 @@ class MQThread(threading.Thread):
         self.logger.info(f"handle_broker_message: {msg}")
 
     def _handle_polled_sockets(self, socks):
-        # Get messages from broker
-        # Riaps wrapper sends messages.
-        if (
-            self.broker_fileno in socks and socks[self.broker_fileno] == zmq.POLLIN
-        ):  # Input from broker
-            self.data_recv = None
-            self.client.loop_read()
-            self.client.loop_write()
-            self.client.loop_misc()
-            if self.data_recv:
-                msg = json.loads(self.data_recv)
-                self.handle_broker_message(msg)
+        for fileno, event in socks.items():
+            sock = self.fileno_to_socket.get(fileno, None)
+            if event & zmq.POLLERR:
+                self.logger.error(
+                    f"Socket error on fileno={fileno}. Attempting reconnect."
+                )
+                if sock:
+                    try:
+                        self.poller.unregister(sock)
+                    except Exception:
+                        pass
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
+                if fileno == self.broker_fileno:
+                    self.broker = None
+                    self.broker_fileno = None
+                continue
+            if fileno == self.broker_fileno and event == zmq.POLLIN:
                 self.data_recv = None
+                self.client.loop_read()
+                self.client.loop_write()
+                self.client.loop_misc()
+                if self.data_recv:
+                    try:
+                        msg = json.loads(self.data_recv)
+                        self.handle_broker_message(msg)
+                    except Exception as e:
+                        self.logger.error(
+                            f"Failed to decode message: {e} | payload: {self.data_recv!r}"
+                        )
+                    self.data_recv = None
 
     def run(self):
-        self.logger.info("MQThread starting")
-        self._mqtt_client()
-        self._mqtt_connect()
-        self._poll()
+        try:
+            self.logger.info("MQThread starting")
+            self._mqtt_client()
+            self._poll()
+        except Exception as e:
+            self.logger.error(
+                f"MQThread encountered an unexpected exception and will exit: {e}",
+                exc_info=True,
+            )
 
     def _poll(self):
         self.logger.info(f"Start polling")
+        backoff = 0.1
+        max_backoff = 5.0
+        next_reconnect_time = 0
+        poll_timeout = 1000  # ms, for responsiveness
+        first_connect = True
         while not self.terminated.is_set():
             if not self.active.is_set():
                 self.logger.info("MQThread waiting for active")
-            self.active.wait(None)  # Pauses the loop until active is set
-            if self.active.is_set():  # Check again in case terminate was called
-                socks = dict(self.poller.poll(1000))  # Run the poller w/ 1 sec timeout
-                (
-                    self._handle_polled_sockets(socks)
-                    if len(socks) > 0
-                    else self.logger.debug("MQThread no new message")
-                )
+            self.active.wait(None)
+            if self.active.is_set():
+                if self.broker is None:
+                    now = time.time()
+                    if now >= next_reconnect_time:
+                        if first_connect:
+                            self.logger.info(
+                                "Attempting initial connection to broker..."
+                            )
+                            first_connect = False
+                        else:
+                            self.logger.info("Broker lost, attempting to reconnect...")
+                        success = self._mqtt_connect()
+                        if success:
+                            backoff = 0.1
+                        else:
+                            self.logger.info(
+                                f"Reconnect failed, will retry in {backoff:.1f} seconds"
+                            )
+                            next_reconnect_time = now + backoff
+                            backoff = min(backoff * 2, max_backoff)
+                    # Even if not reconnecting, still sleep a bit to avoid busy loop
+                    time.sleep(0.05)
+                else:
+                    socks = dict(self.poller.poll(poll_timeout))
+                    if len(socks) > 0:
+                        self._handle_polled_sockets(socks)
+                    else:
+                        self.logger.info("MQThread no new message")
         self.logger.info("MQThread ended")
 
     def _mqtt_client(self):
@@ -125,34 +184,46 @@ class MQThread(threading.Thread):
         self.client.user_data_set(self)
 
     def send(self, topic, data, qos):
-        MQTTMessageInfo = self.client.publish(topic, data, qos=qos)  # pub to the broker
+        try:
+            # Validate and serialize using Pydantic
+            msg = MqttMessage(data=data, topic=topic)
+            payload = msg.model_dump_json()
+        except ValidationError as e:
+            self.logger.error(f"MQTT send validation error: {e}")
+            raise
+        MQTTMessageInfo = self.client.publish(
+            topic, payload, qos=qos
+        )  # pub to the broker
         return MQTTMessageInfo
 
     def _mqtt_connect(self):
-        self.logger.info("Connecting to mqtt broker")
+        """
+        Attempt to connect to the broker once (non-blocking). Return True if connect initiated, False if error.
+        The polling loop manages backoff and repeated attempts.
+        """
+        self.logger.info("Connecting to mqtt broker (non-blocking)")
         try:
             rc = self.client.connect(**self.broker_connect_config)
         except ValueError as e:
             self.logger.error(e)
+            return False
         except socket.error as e:
             self.logger.error(f"Is Mqtt broker running?: {e}")
-            time.sleep(1)
-            self._mqtt_connect()
+            return False
         except Exception as e:
             self.logger.error(f"UNEXPECTED ERROR, ADD TO EXCEPTION HANDLER: {e}")
+            return False
 
-        while self.broker is None:
-            """Wait for broker to be active"""
-            self.logger.info(f"self.broker: {self.broker}")
-            self.client.loop_read()
-            self.client.loop_write()
-            self.client.loop_misc()
-            if self.broker is None:
-                self.logger.info("Waiting for broker to be active")
-                time.sleep(1)
-
-        self.broker_fileno = self.broker.fileno()
-        self.poller.register(self.broker, zmq.POLLIN)  # broker socket
+        # Wait for broker to be active (non-blocking, just check once)
+        self.client.loop_read()
+        self.client.loop_write()
+        self.client.loop_misc()
+        if self.broker is not None:
+            self.broker_fileno = self.broker.fileno()
+            self.poller.register(self.broker, zmq.POLLIN)  # broker socket
+            self.fileno_to_socket[self.broker_fileno] = self.broker
+            return True
+        return False
 
     def activate(self):
         self.active.set()
@@ -163,6 +234,17 @@ class MQThread(threading.Thread):
         self.logger.info("MQThread deactivated")
 
     def terminate(self):
+        # Clean up all registered sockets
+        for sock in list(self.fileno_to_socket.values()):
+            try:
+                self.poller.unregister(sock)
+            except Exception:
+                pass
+            try:
+                sock.close()
+            except Exception:
+                pass
+        self.fileno_to_socket.clear()
         self.active.set()
         self.terminated.set()
         self.logger.info("MQThread terminating")
