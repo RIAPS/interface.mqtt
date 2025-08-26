@@ -5,7 +5,7 @@ authors = [{name = "eiselesr", email = "eiselesr@gmail.com"}]
 requires-python = ">= 3.11"
 dependencies = [
     "paho-mqtt>=2.1.0,<3"
-, "pyyaml", "pyzmq"]
+, "pyyaml", "pyzmq", "pydantic"]
 
 [build-system]
 build-backend = "hatchling.build" # Corrected from "hasting.build"
@@ -24,6 +24,7 @@ dev = ["dev"]
 paho-mqtt = ">=2.1.0,<3"
 pyyaml = ">=6.0.2,<7"
 pyzmq = ">=27.0.1,<28"
+pydantic = ">=2.11.7,<3"
 
 [tool.pixi.pypi-dependencies]
 interface_mqtt = { path = ".", editable = true }
