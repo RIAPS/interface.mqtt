@@ -123,10 +123,16 @@ class MQThread(threading.Thread):
                     self.data_recv = None
 
     def run(self):
-        self.logger.info("MQThread starting")
-        self._mqtt_client()
-        self._mqtt_connect()
-        self._poll()
+        try:
+            self.logger.info("MQThread starting")
+            self._mqtt_client()
+            self._mqtt_connect()
+            self._poll()
+        except Exception as e:
+            self.logger.error(
+                f"MQThread encountered an unexpected exception and will exit: {e}",
+                exc_info=True,
+            )
 
     def _poll(self):
         self.logger.info(f"Start polling")
