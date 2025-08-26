@@ -1,4 +1,5 @@
 import asyncio
+import json
 import structlog
 import threading
 import time
@@ -85,7 +86,8 @@ def test_mqthread_with_real_broker(amqtt_broker_controller):
     received = []
 
     def on_message(client, userdata, msg):
-        received.append(msg.payload.decode())
+        msg = json.loads(msg.payload)
+        received.append(msg)
 
     sub_client = paho.Client()
     sub_client.connect("127.0.0.1", 18883, 5)
@@ -106,7 +108,7 @@ def test_mqthread_with_real_broker(amqtt_broker_controller):
     sub_client.loop_stop()
     sub_client.disconnect()
 
-    assert "hello world" in received
+    assert "hello world" in received[0]["data"]
 
 
 def test_mqthread_broker_restart(amqtt_broker_controller):
