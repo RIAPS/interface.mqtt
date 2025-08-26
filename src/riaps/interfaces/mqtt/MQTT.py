@@ -126,7 +126,6 @@ class MQThread(threading.Thread):
         try:
             self.logger.info("MQThread starting")
             self._mqtt_client()
-            self._mqtt_connect()
             self._poll()
         except Exception as e:
             self.logger.error(
@@ -136,24 +135,43 @@ class MQThread(threading.Thread):
 
     def _poll(self):
         self.logger.info(f"Start polling")
+        backoff = 0.1
+        max_backoff = 5.0
+        next_reconnect_time = 0
+        poll_timeout = 1000  # ms, for responsiveness
+        first_connect = True
         while not self.terminated.is_set():
             if not self.active.is_set():
                 self.logger.info("MQThread waiting for active")
-            self.active.wait(None)  # Pauses the loop until active is set
-            if self.active.is_set():  # Check again in case terminate was called
-                # If broker is lost, try to reconnect
+            self.active.wait(None)
+            if self.active.is_set():
                 if self.broker is None:
-                    self.logger.info("Broker lost, attempting to reconnect...")
-                    self._mqtt_connect()
+                    now = time.time()
+                    if now >= next_reconnect_time:
+                        if first_connect:
+                            self.logger.info(
+                                "Attempting initial connection to broker..."
+                            )
+                            first_connect = False
+                        else:
+                            self.logger.info("Broker lost, attempting to reconnect...")
+                        success = self._mqtt_connect()
+                        if success:
+                            backoff = 0.1
+                        else:
+                            self.logger.info(
+                                f"Reconnect failed, will retry in {backoff:.1f} seconds"
+                            )
+                            next_reconnect_time = now + backoff
+                            backoff = min(backoff * 2, max_backoff)
+                    # Even if not reconnecting, still sleep a bit to avoid busy loop
+                    time.sleep(0.05)
                 else:
-                    socks = dict(
-                        self.poller.poll(1000)
-                    )  # Run the poller w/ 1 sec timeout
-                    (
+                    socks = dict(self.poller.poll(poll_timeout))
+                    if len(socks) > 0:
                         self._handle_polled_sockets(socks)
-                        if len(socks) > 0
-                        else self.logger.info("MQThread no new message")
-                    )
+                    else:
+                        self.logger.info("MQThread no new message")
         self.logger.info("MQThread ended")
 
     def _mqtt_client(self):
@@ -179,31 +197,33 @@ class MQThread(threading.Thread):
         return MQTTMessageInfo
 
     def _mqtt_connect(self):
-        self.logger.info("Connecting to mqtt broker")
+        """
+        Attempt to connect to the broker once (non-blocking). Return True if connect initiated, False if error.
+        The polling loop manages backoff and repeated attempts.
+        """
+        self.logger.info("Connecting to mqtt broker (non-blocking)")
         try:
             rc = self.client.connect(**self.broker_connect_config)
         except ValueError as e:
             self.logger.error(e)
+            return False
         except socket.error as e:
             self.logger.error(f"Is Mqtt broker running?: {e}")
-            time.sleep(1)
-            self._mqtt_connect()
+            return False
         except Exception as e:
             self.logger.error(f"UNEXPECTED ERROR, ADD TO EXCEPTION HANDLER: {e}")
+            return False
 
-        while self.broker is None:
-            """Wait for broker to be active"""
-            self.logger.info(f"self.broker: {self.broker}")
-            self.client.loop_read()
-            self.client.loop_write()
-            self.client.loop_misc()
-            if self.broker is None:
-                self.logger.info("Waiting for broker to be active")
-                time.sleep(1)
-
-        self.broker_fileno = self.broker.fileno()
-        self.poller.register(self.broker, zmq.POLLIN)  # broker socket
-        self.fileno_to_socket[self.broker_fileno] = self.broker
+        # Wait for broker to be active (non-blocking, just check once)
+        self.client.loop_read()
+        self.client.loop_write()
+        self.client.loop_misc()
+        if self.broker is not None:
+            self.broker_fileno = self.broker.fileno()
+            self.poller.register(self.broker, zmq.POLLIN)  # broker socket
+            self.fileno_to_socket[self.broker_fileno] = self.broker
+            return True
+        return False
 
     def activate(self):
         self.active.set()
