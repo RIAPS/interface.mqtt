@@ -1,0 +1,41 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A new push to the same branch cancels the previous run rather than paying for
+# both.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: prefix-dev/setup-pixi@v0.10.1
+        with:
+          environments: dev
+          # Pinned to the version used locally, so CI and developers read the
+          # same lock format. Bump this when upgrading pixi locally.
+          pixi-version: v0.63.2
+          # No `frozen` here on purpose: setup-pixi installs with --locked, which
+          # fails if pixi.lock has drifted from pyproject.toml. That check is the
+          # point — it catches a dependency edit that forgot to re-lock.
+          cache: true
+
+      # tests/integration/test_mqthread.py starts a real amqtt broker on
+      # localhost, so it runs here like any other test — nothing in the suite
+      # needs a RIAPS platform install. tests/need_update_test_MqttDevice.py is
+      # the exception: it imports riaps.ctrl, which ships in the platform .deb
+      # and is not pip-installable. Its filename deliberately does not match
+      # test_*.py, so pytest never collects it.
+      - name: tests
+        run: pixi run -e dev pytest -q
