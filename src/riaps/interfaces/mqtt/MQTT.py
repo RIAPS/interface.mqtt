@@ -38,6 +38,8 @@ class MQThread(threading.Thread):
         self.terminated.clear()
         self.broker = None
         self.broker_fileno = None
+        self.connection_lost = threading.Event()
+        self.has_connected = False
         self.fileno_to_socket = {}
         self.poller = (
             zmq.Poller()
@@ -52,7 +54,11 @@ class MQThread(threading.Thread):
         if rc != 0:
             exit(rc)
         else:
-            this.logger.info("mqtt cb: connected with result code " + str(rc))
+            if this.has_connected:
+                this.logger.info("Reconnected to broker")
+            else:
+                this.logger.info("mqtt cb: connected with result code " + str(rc))
+            this.has_connected = True
             for topic in this.topics["subscriptions"]:
                 client.subscribe(topic)
 
@@ -61,6 +67,29 @@ class MQThread(threading.Thread):
         """Handler passed to mqtt client"""
         this.logger.info("mqtt cb: socket open (%r) %r" % (client, sock))
         this.broker = sock
+
+    @staticmethod
+    def on_disconnect(client, this, rc):
+        """Handler passed to mqtt client"""
+        # paho has already closed the socket. This can run on the thread that
+        # called send(), so only flag it; _poll() drops the socket and reconnects.
+        if rc == mqtt.MQTT_ERR_SUCCESS:
+            this.logger.info("mqtt cb: disconnected from broker")
+        else:
+            this.logger.error(
+                f"mqtt cb: disconnected from broker: {mqtt.error_string(rc)}"
+            )
+        this.connection_lost.set()
+
+    def _drop_broker(self):
+        sock = self.fileno_to_socket.pop(self.broker_fileno, None)
+        if sock is not None:
+            try:
+                self.poller.unregister(sock)
+            except Exception:
+                pass
+        self.broker = None
+        self.broker_fileno = None
 
     @staticmethod
     def on_message(client, this, msg):
@@ -111,7 +140,6 @@ class MQThread(threading.Thread):
                 self.data_recv = None
                 self.client.loop_read()
                 self.client.loop_write()
-                self.client.loop_misc()
                 if self.data_recv:
                     try:
                         msg = json.loads(self.data_recv)
@@ -145,6 +173,9 @@ class MQThread(threading.Thread):
                 self.logger.info("MQThread waiting for active")
             self.active.wait(None)
             if self.active.is_set():
+                if self.connection_lost.is_set():
+                    self.connection_lost.clear()
+                    self._drop_broker()
                 if self.broker is None:
                     now = time.time()
                     if now >= next_reconnect_time:
@@ -172,12 +203,17 @@ class MQThread(threading.Thread):
                         self._handle_polled_sockets(socks)
                     else:
                         self.logger.debug("MQThread no new message")
+                    # External event loop mode: paho sends the keepalive PINGREQ
+                    # and times out a dead connection only from loop_misc(), so
+                    # it must run even when the subscriptions are quiet.
+                    self.client.loop_misc()
         self.logger.info("MQThread ended")
 
     def _mqtt_client(self):
         self.logger.info("Creating mqtt client")
         self.client = mqtt.Client()
         self.client.on_connect = self.on_connect
+        self.client.on_disconnect = self.on_disconnect
         self.client.on_message = self.on_message
         self.client.on_socket_open = self.on_socket_open
         self.client.on_publish = self.on_publish

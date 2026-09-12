@@ -72,7 +72,59 @@ def test_handle_polled_sockets_socket_error(mock_client, mqtt_config):
     assert thread.broker_fileno is None
 
 
-# 4. Test clean shutdown and resource cleanup
+# 4. Keepalive runs on a quiet connection (issue #4)
+@patch("paho.mqtt.client.Client")
+def test_poll_runs_keepalive_when_no_socket_events(mock_client, mqtt_config):
+    logger = DummyLogger()
+    thread = MQThread(logger, mqtt_config)
+    thread._mqtt_client()
+    thread.broker = MagicMock()
+    thread.active.set()
+    thread.poller = MagicMock()
+    quiet_polls = 3
+
+    def poll(timeout):
+        if thread.poller.poll.call_count >= quiet_polls:
+            thread.terminated.set()
+        return []
+
+    thread.poller.poll.side_effect = poll
+    thread._poll()
+    assert thread.client.loop_misc.call_count == quiet_polls
+
+
+# 5. A disconnect reported by paho puts the loop back on the reconnect path (issue #4)
+@patch("paho.mqtt.client.Client")
+def test_disconnect_callback_triggers_reconnect(mock_client, mqtt_config):
+    logger = DummyLogger()
+    thread = MQThread(logger, mqtt_config)
+    thread._mqtt_client()
+    sock = MagicMock()
+    sock.fileno.return_value = 42
+    thread.broker = sock
+    thread.broker_fileno = 42
+    thread.fileno_to_socket = {42: sock}
+    thread.poller = MagicMock()
+    thread.active.set()
+
+    thread.client.on_disconnect(thread.client, thread, 7)  # MQTT_ERR_CONN_LOST
+
+    # paho may run the callback on the thread that called send(), so it must
+    # leave the poller to the MQThread.
+    thread.poller.unregister.assert_not_called()
+
+    def connect(**kwargs):
+        thread.terminated.set()
+        return 0
+
+    thread.client.connect.side_effect = connect
+    thread._poll()
+    thread.poller.unregister.assert_called_once_with(sock)
+    assert thread.fileno_to_socket == {}
+    thread.client.connect.assert_called_once()
+
+
+# 6. Test clean shutdown and resource cleanup
 @patch("paho.mqtt.client.Client")
 def test_terminate_cleans_up_sockets(mock_client, mqtt_config):
     logger = DummyLogger()
