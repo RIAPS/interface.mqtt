@@ -1,11 +1,14 @@
-"""End-to-end checks for issue #4: an idle subscriber must stay connected, and
-must reconnect on its own if the broker drops it anyway.
+"""End-to-end checks for issue #4: an idle subscriber must stay connected, a
+client must reconnect on its own if the broker drops it, and a busy publisher
+must notice a half-open link (no FIN or RST ever arrives) and reconnect.
 
 amqtt never expires a client on keepalive, so this runs against mosquitto,
 which drops a client that sends nothing for 1.5x its keepalive.
 """
 
+import os
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -51,8 +54,16 @@ class Mosquitto:
         self.stop()
         pytest.fail("mosquitto did not start")
 
+    def freeze(self):
+        """Stop the process without closing its sockets: the link goes half-open."""
+        os.kill(self.proc.pid, signal.SIGSTOP)
+
+    def thaw(self):
+        os.kill(self.proc.pid, signal.SIGCONT)
+
     def stop(self):
         if self.proc is not None:
+            self.thaw()  # a stopped process never handles SIGTERM
             self.proc.terminate()
             self.proc.wait(timeout=5)
             self.proc = None
@@ -72,11 +83,14 @@ def mosquitto(tmp_path):
 
 
 class DummyLogger:
+    def __init__(self):
+        self.errors = []
+
     def info(self, msg, **kwargs):
         pass
 
     def error(self, msg, **kwargs):
-        pass
+        self.errors.append(msg)
 
     def debug(self, msg, **kwargs):
         pass
@@ -152,4 +166,31 @@ def test_subscriber_reconnects_after_broker_drops_it(mosquitto, mqthread):
     _operator_sends_command('{"cmd": "resume"}')
 
     assert _wait_for(lambda: mqthread.received, timeout=3)
+    assert mqthread.received == [{"cmd": "resume"}]
+
+
+def test_busy_publisher_notices_half_open_link_and_reconnects(mosquitto, mqthread):
+    # The field failure: the app publishes at 1 Hz, the path stops carrying
+    # packets, and writes keep succeeding into the local send buffer. Only the
+    # unanswered PINGREQ from loop_misc() can reveal that the peer is gone.
+    mosquitto.freeze()
+    frozen_at = time.time()
+    deadline = frozen_at + KEEPALIVE * 3 + 2
+    noticed_at = None
+    while time.time() < deadline:
+        mqthread.send("test/telemetry", "tick", qos=0)
+        if any("disconnected from broker" in e for e in mqthread.logger.errors):
+            noticed_at = time.time()
+            break
+        time.sleep(1)
+    mosquitto.thaw()
+
+    assert noticed_at is not None, "client never noticed the half-open link"
+    assert noticed_at - frozen_at <= KEEPALIVE * 3 + 1
+
+    # Once the broker answers again, the client is back and receives commands.
+    time.sleep(KEEPALIVE * 2)
+    _operator_sends_command('{"cmd": "resume"}')
+
+    assert _wait_for(lambda: mqthread.received, timeout=KEEPALIVE * 4)
     assert mqthread.received == [{"cmd": "resume"}]
