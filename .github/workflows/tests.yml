@@ -34,8 +34,8 @@ jobs:
       # tests/integration/test_mqthread.py starts a real amqtt broker on
       # localhost, and tests/integration/test_keepalive.py starts mosquitto
       # (from the pixi dev env), because amqtt never enforces keepalive. Both
-      # run here like any other test — nothing in the suite
-      # needs a RIAPS platform install. tests/need_update_test_MqttDevice.py is
+      # run here like any other test — nothing in the suite needs a RIAPS
+      # platform install. tests/need_update_test_MqttDevice.py is
       # the exception: it imports riaps.ctrl, which ships in the platform .deb
       # and is not pip-installable. Its filename deliberately does not match
       # test_*.py, so pytest never collects it.

@@ -1,3 +1,4 @@
+import paho.mqtt.client as mqtt
 import pytest
 import socket
 from unittest.mock import MagicMock, patch
@@ -72,7 +73,7 @@ def test_handle_polled_sockets_socket_error(mock_client, mqtt_config):
     assert thread.broker_fileno is None
 
 
-# 4. Keepalive runs on a quiet connection (issue #4)
+# 4. Keepalive (PINGREQ and the PINGRESP deadline) runs when no data arrives (issue #4)
 @patch("paho.mqtt.client.Client")
 def test_poll_runs_keepalive_when_no_socket_events(mock_client, mqtt_config):
     logger = DummyLogger()
@@ -107,7 +108,7 @@ def test_disconnect_callback_triggers_reconnect(mock_client, mqtt_config):
     thread.poller = MagicMock()
     thread.active.set()
 
-    thread.client.on_disconnect(thread.client, thread, 7)  # MQTT_ERR_CONN_LOST
+    thread.client.on_disconnect(thread.client, thread, mqtt.MQTT_ERR_CONN_LOST)
 
     # paho may run the callback on the thread that called send(), so it must
     # leave the poller to the MQThread.

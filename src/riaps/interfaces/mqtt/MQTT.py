@@ -88,6 +88,10 @@ class MQThread(threading.Thread):
                 self.poller.unregister(sock)
             except Exception:
                 pass
+            try:
+                sock.close()  # already closed if paho reported the disconnect
+            except Exception:
+                pass
         self.broker = None
         self.broker_fileno = None
 
@@ -123,7 +127,9 @@ class MQThread(threading.Thread):
                 self.logger.error(
                     f"Socket error on fileno={fileno}. Attempting reconnect."
                 )
-                if sock:
+                if fileno == self.broker_fileno:
+                    self._drop_broker()
+                elif sock:
                     try:
                         self.poller.unregister(sock)
                     except Exception:
@@ -132,9 +138,6 @@ class MQThread(threading.Thread):
                         sock.close()
                     except Exception:
                         pass
-                if fileno == self.broker_fileno:
-                    self.broker = None
-                    self.broker_fileno = None
                 continue
             if fileno == self.broker_fileno and event == zmq.POLLIN:
                 self.data_recv = None
@@ -167,7 +170,6 @@ class MQThread(threading.Thread):
         max_backoff = 5.0
         next_reconnect_time = 0
         poll_timeout = 1000  # ms, for responsiveness
-        first_connect = True
         while not self.terminated.is_set():
             if not self.active.is_set():
                 self.logger.info("MQThread waiting for active")
@@ -179,11 +181,10 @@ class MQThread(threading.Thread):
                 if self.broker is None:
                     now = time.time()
                     if now >= next_reconnect_time:
-                        if first_connect:
+                        if not self.has_connected:
                             self.logger.info(
                                 "Attempting initial connection to broker..."
                             )
-                            first_connect = False
                         else:
                             self.logger.info("Broker lost, attempting to reconnect...")
                         success = self._mqtt_connect()
@@ -204,8 +205,10 @@ class MQThread(threading.Thread):
                     else:
                         self.logger.debug("MQThread no new message")
                     # External event loop mode: paho sends the keepalive PINGREQ
-                    # and times out a dead connection only from loop_misc(), so
-                    # it must run even when the subscriptions are quiet.
+                    # and enforces the PINGRESP deadline only from loop_misc().
+                    # That deadline is the only way to detect a half-open link,
+                    # where writes keep succeeding and nothing comes back, so
+                    # it must run on every pass, not only when data arrives.
                     self.client.loop_misc()
         self.logger.info("MQThread ended")
 
@@ -328,10 +331,8 @@ class RiapsMQThread(MQThread):
                 self.logger.error(
                     f"Failed to send message to broker. rc: {mqtt.error_string(rc)}"
                 )
-                if (
-                    rc == mqtt.MQTT_ERR_NO_CONN
-                ):  # if the broker goes down, try to reconnect
-                    self._mqtt_connect()
+                # No reconnect here: on_disconnect has flagged the loss and
+                # _poll() reconnects, so a second connect would race it.
 
         super(RiapsMQThread, self)._handle_polled_sockets(socks)
 
