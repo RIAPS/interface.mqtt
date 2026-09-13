@@ -75,18 +75,42 @@ class Mosquitto:
 
 
 @pytest.fixture
-def mosquitto(tmp_path):
+def mosquitto_exe():
     exe = _mosquitto_path()
     if exe is None:
         if os.environ.get("CI"):
             pytest.fail("mosquitto is missing from the pixi dev env")
         pytest.skip("mosquitto is not installed")
+    return exe
+
+
+def _start_mosquitto(exe, tmp_path, allow_anonymous):
     conf = tmp_path / "mosquitto.conf"
-    conf.write_text(f"listener {PORT} 127.0.0.1\nallow_anonymous true\n")
+    conf.write_text(
+        f"listener {PORT} 127.0.0.1\n"
+        f"allow_anonymous {'true' if allow_anonymous else 'false'}\n"
+    )
     broker = Mosquitto(exe, conf)
     broker.start()
+    return broker
+
+
+@pytest.fixture
+def mosquitto(mosquitto_exe, tmp_path):
+    broker = _start_mosquitto(mosquitto_exe, tmp_path, allow_anonymous=True)
     yield broker
     broker.stop()
+
+
+def _mqthread_config():
+    return {
+        "broker_connect_config": {
+            "host": "127.0.0.1",
+            "port": PORT,
+            "keepalive": KEEPALIVE,
+        },
+        "topics": {"subscriptions": [COMMAND_TOPIC]},
+    }
 
 
 class RecordingLogger:
@@ -124,15 +148,7 @@ class RecordingThread(MQThread):
 
 @pytest.fixture
 def mqthread(mosquitto):
-    config = {
-        "broker_connect_config": {
-            "host": "127.0.0.1",
-            "port": PORT,
-            "keepalive": KEEPALIVE,
-        },
-        "topics": {"subscriptions": [COMMAND_TOPIC]},
-    }
-    thread = RecordingThread(RecordingLogger(), config)
+    thread = RecordingThread(RecordingLogger(), _mqthread_config())
     thread.start()
     thread.activate()
     # has_connected is set on CONNACK, not when the socket opens.
@@ -219,3 +235,24 @@ def test_busy_publisher_notices_half_open_link_and_reconnects(mosquitto, mqthrea
 
     assert _wait_for(lambda: mqthread.received, timeout=3)
     assert mqthread.received == [{"cmd": "resume"}]
+
+
+def test_refused_client_logs_and_keeps_retrying(mosquitto_exe, tmp_path):
+    # A broker that requires auth refuses the anonymous client with CONNACK 5.
+    # The thread used to call exit() here and die without a word.
+    broker = _start_mosquitto(mosquitto_exe, tmp_path, allow_anonymous=False)
+    thread = RecordingThread(RecordingLogger(), _mqthread_config())
+    try:
+        thread.start()
+        thread.activate()
+
+        def refusals():
+            return sum("refused connection" in e for e in thread.logger.errors)
+
+        assert _wait_for(lambda: refusals() >= 3, timeout=5)
+        assert thread.is_alive()
+        assert not thread.has_connected
+    finally:
+        thread.terminate()
+        thread.join(timeout=5)
+        broker.stop()

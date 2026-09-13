@@ -10,6 +10,10 @@ import yaml
 import zmq
 
 
+MIN_BACKOFF = 0.1  # s, first reconnect delay
+MAX_BACKOFF = 5.0  # s
+
+
 def load_mqtt_config(path_to_config):
     with open(path_to_config, "r") as cfg_file:
         cfg = yaml.safe_load(cfg_file)
@@ -40,6 +44,7 @@ class MQThread(threading.Thread):
         self.broker_fileno = None
         self.connection_lost = threading.Event()
         self.has_connected = False
+        self.reconnect_backoff = MIN_BACKOFF  # s; reset once the broker accepts
         self.fileno_to_socket = {}
         self.poller = (
             zmq.Poller()
@@ -52,13 +57,16 @@ class MQThread(threading.Thread):
     def on_connect(client, this, flags, rc):
         """Handler passed to mqtt client"""
         if rc != 0:
-            exit(rc)
+            # paho closes the socket and calls on_disconnect next, so _poll()
+            # retries with backoff. exit() here would end the thread silently.
+            this.logger.error(f"mqtt cb: broker refused connection: {mqtt.connack_string(rc)}")
         else:
             if this.has_connected:
                 this.logger.info("Reconnected to broker")
             else:
                 this.logger.info("mqtt cb: connected with result code " + str(rc))
             this.has_connected = True
+            this.reconnect_backoff = MIN_BACKOFF
             for topic in this.topics["subscriptions"]:
                 client.subscribe(topic)
 
@@ -80,6 +88,11 @@ class MQThread(threading.Thread):
                 f"mqtt cb: disconnected from broker: {mqtt.error_string(rc)}"
             )
         this.connection_lost.set()
+
+    def _next_backoff(self):
+        backoff = self.reconnect_backoff
+        self.reconnect_backoff = min(backoff * 2, MAX_BACKOFF)
+        return backoff
 
     def _drop_broker(self):
         sock = self.fileno_to_socket.pop(self.broker_fileno, None)
@@ -158,6 +171,12 @@ class MQThread(threading.Thread):
             self.logger.info("MQThread starting")
             self._mqtt_client()
             self._poll()
+        except SystemExit as e:
+            # Not an Exception, so it would otherwise end the thread silently.
+            self.logger.error(
+                f"MQThread got SystemExit({e.code}) and will exit",
+                exc_info=True,
+            )
         except Exception as e:
             self.logger.error(
                 f"MQThread encountered an unexpected exception and will exit: {e}",
@@ -166,8 +185,6 @@ class MQThread(threading.Thread):
 
     def _poll(self):
         self.logger.info(f"Start polling")
-        backoff = 0.1
-        max_backoff = 5.0
         next_reconnect_time = 0
         poll_timeout = 1000  # ms, for responsiveness
         while not self.terminated.is_set():
@@ -178,6 +195,9 @@ class MQThread(threading.Thread):
                 if self.connection_lost.is_set():
                     self.connection_lost.clear()
                     self._drop_broker()
+                    # A refused CONNACK also lands here, straight after the
+                    # socket opened, so back off rather than retry at once.
+                    next_reconnect_time = time.time() + self._next_backoff()
                 if self.broker is None:
                     now = time.time()
                     if now >= next_reconnect_time:
@@ -188,14 +208,12 @@ class MQThread(threading.Thread):
                         else:
                             self.logger.info("Broker lost, attempting to reconnect...")
                         success = self._mqtt_connect()
-                        if success:
-                            backoff = 0.1
-                        else:
+                        if not success:
+                            backoff = self._next_backoff()
                             self.logger.info(
                                 f"Reconnect failed, will retry in {backoff:.1f} seconds"
                             )
                             next_reconnect_time = now + backoff
-                            backoff = min(backoff * 2, max_backoff)
                     # Even if not reconnecting, still sleep a bit to avoid busy loop
                     time.sleep(0.05)
                 else:
