@@ -10,6 +10,10 @@ import yaml
 import zmq
 
 
+MIN_BACKOFF = 0.1  # s, first reconnect delay
+MAX_BACKOFF = 5.0  # s
+
+
 def load_mqtt_config(path_to_config):
     with open(path_to_config, "r") as cfg_file:
         cfg = yaml.safe_load(cfg_file)
@@ -38,6 +42,9 @@ class MQThread(threading.Thread):
         self.terminated.clear()
         self.broker = None
         self.broker_fileno = None
+        self.connection_lost = threading.Event()
+        self.has_connected = False
+        self.reconnect_backoff = MIN_BACKOFF  # s; reset once the broker accepts
         self.fileno_to_socket = {}
         self.poller = (
             zmq.Poller()
@@ -50,9 +57,16 @@ class MQThread(threading.Thread):
     def on_connect(client, this, flags, rc):
         """Handler passed to mqtt client"""
         if rc != 0:
-            exit(rc)
+            # paho closes the socket and calls on_disconnect next, so _poll()
+            # retries with backoff. exit() here would end the thread silently.
+            this.logger.error(f"mqtt cb: broker refused connection: {mqtt.connack_string(rc)}")
         else:
-            this.logger.info("mqtt cb: connected with result code " + str(rc))
+            if this.has_connected:
+                this.logger.info("Reconnected to broker")
+            else:
+                this.logger.info("mqtt cb: connected with result code " + str(rc))
+            this.has_connected = True
+            this.reconnect_backoff = MIN_BACKOFF
             for topic in this.topics["subscriptions"]:
                 client.subscribe(topic)
 
@@ -61,6 +75,38 @@ class MQThread(threading.Thread):
         """Handler passed to mqtt client"""
         this.logger.info("mqtt cb: socket open (%r) %r" % (client, sock))
         this.broker = sock
+
+    @staticmethod
+    def on_disconnect(client, this, rc):
+        """Handler passed to mqtt client"""
+        # paho has already closed the socket. This can run on the thread that
+        # called send(), so only flag it; _poll() drops the socket and reconnects.
+        if rc == mqtt.MQTT_ERR_SUCCESS:
+            this.logger.info("mqtt cb: disconnected from broker")
+        else:
+            this.logger.error(
+                f"mqtt cb: disconnected from broker: {mqtt.error_string(rc)}"
+            )
+        this.connection_lost.set()
+
+    def _next_backoff(self):
+        backoff = self.reconnect_backoff
+        self.reconnect_backoff = min(backoff * 2, MAX_BACKOFF)
+        return backoff
+
+    def _drop_broker(self):
+        sock = self.fileno_to_socket.pop(self.broker_fileno, None)
+        if sock is not None:
+            try:
+                self.poller.unregister(sock)
+            except Exception:
+                pass
+            try:
+                sock.close()  # already closed if paho reported the disconnect
+            except Exception:
+                pass
+        self.broker = None
+        self.broker_fileno = None
 
     @staticmethod
     def on_message(client, this, msg):
@@ -94,7 +140,9 @@ class MQThread(threading.Thread):
                 self.logger.error(
                     f"Socket error on fileno={fileno}. Attempting reconnect."
                 )
-                if sock:
+                if fileno == self.broker_fileno:
+                    self._drop_broker()
+                elif sock:
                     try:
                         self.poller.unregister(sock)
                     except Exception:
@@ -103,15 +151,11 @@ class MQThread(threading.Thread):
                         sock.close()
                     except Exception:
                         pass
-                if fileno == self.broker_fileno:
-                    self.broker = None
-                    self.broker_fileno = None
                 continue
             if fileno == self.broker_fileno and event == zmq.POLLIN:
                 self.data_recv = None
                 self.client.loop_read()
                 self.client.loop_write()
-                self.client.loop_misc()
                 if self.data_recv:
                     try:
                         msg = json.loads(self.data_recv)
@@ -127,6 +171,12 @@ class MQThread(threading.Thread):
             self.logger.info("MQThread starting")
             self._mqtt_client()
             self._poll()
+        except SystemExit as e:
+            # Not an Exception, so it would otherwise end the thread silently.
+            self.logger.error(
+                f"MQThread got SystemExit({e.code}) and will exit",
+                exc_info=True,
+            )
         except Exception as e:
             self.logger.error(
                 f"MQThread encountered an unexpected exception and will exit: {e}",
@@ -135,35 +185,35 @@ class MQThread(threading.Thread):
 
     def _poll(self):
         self.logger.info(f"Start polling")
-        backoff = 0.1
-        max_backoff = 5.0
         next_reconnect_time = 0
         poll_timeout = 1000  # ms, for responsiveness
-        first_connect = True
         while not self.terminated.is_set():
             if not self.active.is_set():
                 self.logger.info("MQThread waiting for active")
             self.active.wait(None)
             if self.active.is_set():
+                if self.connection_lost.is_set():
+                    self.connection_lost.clear()
+                    self._drop_broker()
+                    # A refused CONNACK also lands here, straight after the
+                    # socket opened, so back off rather than retry at once.
+                    next_reconnect_time = time.time() + self._next_backoff()
                 if self.broker is None:
                     now = time.time()
                     if now >= next_reconnect_time:
-                        if first_connect:
+                        if not self.has_connected:
                             self.logger.info(
                                 "Attempting initial connection to broker..."
                             )
-                            first_connect = False
                         else:
                             self.logger.info("Broker lost, attempting to reconnect...")
                         success = self._mqtt_connect()
-                        if success:
-                            backoff = 0.1
-                        else:
+                        if not success:
+                            backoff = self._next_backoff()
                             self.logger.info(
                                 f"Reconnect failed, will retry in {backoff:.1f} seconds"
                             )
                             next_reconnect_time = now + backoff
-                            backoff = min(backoff * 2, max_backoff)
                     # Even if not reconnecting, still sleep a bit to avoid busy loop
                     time.sleep(0.05)
                 else:
@@ -172,12 +222,19 @@ class MQThread(threading.Thread):
                         self._handle_polled_sockets(socks)
                     else:
                         self.logger.debug("MQThread no new message")
+                    # External event loop mode: paho sends the keepalive PINGREQ
+                    # and enforces the PINGRESP deadline only from loop_misc().
+                    # That deadline is the only way to detect a half-open link,
+                    # where writes keep succeeding and nothing comes back, so
+                    # it must run on every pass, not only when data arrives.
+                    self.client.loop_misc()
         self.logger.info("MQThread ended")
 
     def _mqtt_client(self):
         self.logger.info("Creating mqtt client")
         self.client = mqtt.Client()
         self.client.on_connect = self.on_connect
+        self.client.on_disconnect = self.on_disconnect
         self.client.on_message = self.on_message
         self.client.on_socket_open = self.on_socket_open
         self.client.on_publish = self.on_publish
@@ -292,10 +349,8 @@ class RiapsMQThread(MQThread):
                 self.logger.error(
                     f"Failed to send message to broker. rc: {mqtt.error_string(rc)}"
                 )
-                if (
-                    rc == mqtt.MQTT_ERR_NO_CONN
-                ):  # if the broker goes down, try to reconnect
-                    self._mqtt_connect()
+                # No reconnect here: on_disconnect has flagged the loss and
+                # _poll() reconnects, so a second connect would race it.
 
         super(RiapsMQThread, self)._handle_polled_sockets(socks)
 
